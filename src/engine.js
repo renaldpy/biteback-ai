@@ -13,7 +13,7 @@ export const FORECAST = { buffer: 0.1, batch: 5, soldOutAt: 0.95, soldOutUplift:
 
 // Food recovery hierarchy, best use first. `partner: true` streams can be switched on/off.
 export const STREAMS = [
-  { id: 'sale', label: 'Flash sale', color: '#4f46e5', partner: false, note: 'Sold at a discount on GrabFood' },
+  { id: 'sale', label: 'Flash sale', color: '#4f46e5', partner: false, note: 'Sold at a discount on the CraveSave app' },
   { id: 'staff', label: 'Staff meals', color: '#0284c7', partner: true, note: `Up to ${STAFF_MEAL_CAP} portions per close` },
   { id: 'donate', label: 'Food bank', color: '#059669', partner: true, note: 'Evening pickup by a food rescue partner' },
   { id: 'feed', label: 'Insect farm', color: '#d97706', partner: true, note: 'Black soldier fly larvae → animal feed' },
@@ -23,10 +23,22 @@ export const STREAMS = [
 export const NO_PARTNERS = { staff: false, donate: false, feed: false, compost: false }
 export const ALL_PARTNERS = { staff: true, donate: true, feed: true, compost: true }
 
-export const EXPECTED_NOON_SELL_THROUGH = 0.45 // ASSUMPTION: a normal day has sold 45% by noon
 export const CO2E_PER_MEAL = KG_PER_UNIT * CO2E_PER_KG
-export const PROMO_LIFETIME_MIN = 90
-export const BAG_DISCOUNT = 60
+
+// Business-editable rules. Every value can be changed in the Pricing & AI Rules panel.
+export const DEFAULT_RULES = {
+  understockAt: 0.85, // noon sell-through that triggers a stockout warning
+  expectedNoon: 0.45, // ASSUMPTION: a normal day has sold 45% by noon
+  prepBoost: 20, // portions added by Auto-Prep
+  surplusAt: 15, // 5:30 PM leftovers that count as surplus
+  surplusDiscount: 15,
+  criticalAt: 10, // 9 PM leftovers that count as critical
+  criticalDiscount: 40,
+  bagDiscount: 60,
+  promoMinutes: 90, // how long a pushed deal stays live
+}
+
+export const priceAfter = (price, discount) => Math.round(price * (100 - discount)) / 100
 
 export const sum = (list, fn) => list.reduce((total, x) => total + fn(x), 0)
 export const sellThrough = (item) => (item.prep > 0 ? item.sold / item.prep : 0)
@@ -36,39 +48,48 @@ export const surplusOf = (item) => Math.max(0, item.prep - item.sold)
  * The "AI" rules engine: maps an item and the simulated time to a stock status.
  * @returns {{ type: 'understock'|'overstock'|'overstock_critical'|'optimal', message: string, suggestedAction: string|null, discount?: number }}
  */
-export function analyzeStock(item, time) {
+export function analyzeStock(item, time, rules = DEFAULT_RULES) {
   const left = item.prep - item.sold
-  if (time === '12:00 PM' && sellThrough(item) > 0.85) {
-    const pace = sellThrough(item) / EXPECTED_NOON_SELL_THROUGH
-    return { type: 'understock', message: `Understock risk: selling ${pace.toFixed(1)}× faster than usual.`, suggestedAction: 'Prep +20', pace }
+  if (time === '12:00 PM' && sellThrough(item) > rules.understockAt) {
+    const pace = sellThrough(item) / rules.expectedNoon
+    return { type: 'understock', message: `Understock risk: selling ${pace.toFixed(1)}× faster than usual.`, suggestedAction: `Prep +${rules.prepBoost}`, pace }
   }
-  if (time === '5:30 PM' && left > 15) {
-    return { type: 'overstock', message: 'Moderate surplus.', suggestedAction: '15% discount', discount: 15 }
+  if (time === '5:30 PM' && left > rules.surplusAt) {
+    return { type: 'overstock', message: 'Moderate surplus.', suggestedAction: `${rules.surplusDiscount}% discount`, discount: rules.surplusDiscount }
   }
-  if (time === '9:00 PM' && left > 10) {
-    return { type: 'overstock_critical', message: 'Critical waste risk.', suggestedAction: '40% Flash Sale or Mystery Bag', discount: 40 }
+  if (time === '9:00 PM' && left > rules.criticalAt) {
+    return { type: 'overstock_critical', message: 'Critical waste risk.', suggestedAction: `${rules.criticalDiscount}% Flash Sale or Mystery Bag`, discount: rules.criticalDiscount }
   }
   return { type: 'optimal', message: 'Stock is on track.', suggestedAction: null }
 }
 
-export function makePromo(item, discount, time, { isBag = false, createdAt = Date.now() } = {}) {
+/** `units` and `minutes` default to all surplus and the rule's promo lifetime. */
+export function makePromo(item, discount, time, { isBag = false, createdAt = Date.now(), units, minutes = DEFAULT_RULES.promoMinutes } = {}) {
   return {
     id: item.id,
     name: isBag ? `Mystery Bag: ${item.short ?? item.name}` : item.name,
     isBag,
     discount,
-    units: surplusOf(item),
+    units: units ?? surplusOf(item),
+    cost: item.cost,
     originalPrice: item.price,
-    promoPrice: Math.round(item.price * (100 - discount)) / 100,
+    promoPrice: priceAfter(item.price, discount),
     pushedAt: time,
-    expiresAt: createdAt + PROMO_LIFETIME_MIN * 60_000,
+    paused: false,
+    expiresAt: createdAt + minutes * 60_000,
   }
+}
+
+/** Live edits from the business: re-derive the price whenever the discount changes. */
+export function editPromo(promo, patch) {
+  const next = { ...promo, ...patch }
+  return { ...next, units: Math.max(0, next.units), promoPrice: priceAfter(next.originalPrice, next.discount) }
 }
 
 /** A customer buys one portion of a live promo: the restaurant's sold count and the promo stock move together. */
 export function applyOrder(inventory, promos, promoId) {
   const promo = promos.find((p) => p.id === promoId)
-  if (!promo || promo.units <= 0) return { inventory, promos, ok: false }
+  if (!promo || promo.paused || promo.units <= 0) return { inventory, promos, ok: false }
   return {
     ok: true,
     inventory: inventory.map((item) => (item.id === promoId ? { ...item, sold: Math.min(item.prep, item.sold + 1) } : item)),

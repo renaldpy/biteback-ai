@@ -4,7 +4,6 @@ import {
   Bell, Bike, Clock, Compass, Flame, Gift, Leaf, LogOut, Map as MapIcon, MapPin, Navigation, Receipt,
   Store, Timer, User, Wallet, X,
 } from 'lucide-react'
-import { PROMO_LIFETIME_MIN } from './engine'
 import { cx, rm } from './format'
 
 const RESTAURANT = 'Mid Valley Outlet'
@@ -41,8 +40,9 @@ function countdown(ms) {
 }
 
 /** Live promos become feed deals; with none live, the feed falls back to mock boxes from other restaurants. */
-function useDeals(activePromos, inventory) {
+function useDeals(allPromos, inventory) {
   const [openedAt] = useState(() => Date.now())
+  const activePromos = allPromos.filter((p) => !p.paused)
   if (activePromos.length === 0) {
     return { isFallback: true, deals: MOCK_BOXES.map((m) => ({ ...m, isLive: false, expiresAt: openedAt + m.minutes * 60_000 })) }
   }
@@ -451,7 +451,7 @@ function CheckoutSheet({ deal, timeOfDay, onClose, onConfirm }) {
           >
             Confirm order · {rm(deal.promoPrice)}
           </button>
-          <p className="mt-2 text-center text-[11px] text-zinc-400">Rescues ~0.4 kg of food. Expires {PROMO_LIFETIME_MIN} min after listing.</p>
+          <p className="mt-2 text-center text-[11px] text-zinc-400">Rescues ~0.4 kg of food that would otherwise be binned.</p>
         </div>
       )}
     </dialog>

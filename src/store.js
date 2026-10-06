@@ -1,6 +1,6 @@
 // Global demo state shared by the auth, restaurant and customer views.
 import { useEffect, useState } from 'react'
-import { ALL_PARTNERS, CO2E_PER_MEAL, NO_PARTNERS, analyzeStock, applyOrder, makePromo } from './engine'
+import { ALL_PARTNERS, CO2E_PER_MEAL, DEFAULT_RULES, NO_PARTNERS, analyzeStock, applyOrder, editPromo, makePromo } from './engine'
 
 export const SEED_INVENTORY = [
   { id: 1, short: 'Nasi Lemak', name: 'Signature Nasi Lemak', price: 14.0, cost: 6.0, prep: 60, sold: 54, category: 'Mains' },
@@ -39,6 +39,7 @@ export function useDemoStore() {
   const [partners, setPartners] = useState(NO_PARTNERS)
   const [closeLog, setCloseLog] = useState(EMPTY_LOG)
   const [pitchStep, setPitchStep] = useState(null)
+  const [rules, setRules] = useState(DEFAULT_RULES)
 
   useEffect(() => {
     if (!toast) return
@@ -67,6 +68,7 @@ export function useDemoStore() {
     setCloseLog(EMPTY_LOG)
     setDiscounts({})
     setCategory('All')
+    setRules(DEFAULT_RULES)
   }
 
   const resetDemo = () => {
@@ -81,6 +83,9 @@ export function useDemoStore() {
     setCurrentView(PITCH_STEPS[n].view ?? 'restaurant')
     setPitchStep(n)
   }
+
+  const updatePromo = (id, patch) =>
+    setActivePromos((promos) => promos.map((p) => (p.id === id ? editPromo(p, patch) : p)))
 
   /** `deal` is a live promo, or a mock mystery box from another restaurant (no inventory to sync). */
   const placeOrder = (deal, mode) => {
@@ -102,7 +107,7 @@ export function useDemoStore() {
   return {
     currentView, setCurrentView, timeOfDay, setTimeOfDay, inventory, setInventory, activePromos, setActivePromos,
     customerImpact, orders, toast, setToast, notify, discounts, setDiscounts, category, setCategory,
-    partners, setPartners, closeLog, setCloseLog, pitchStep, setPitchStep,
+    partners, setPartners, closeLog, setCloseLog, pitchStep, setPitchStep, rules, setRules, updatePromo,
     resetDemo, goToPitchStep, placeOrder,
   }
 }

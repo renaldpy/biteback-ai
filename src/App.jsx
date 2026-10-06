@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Boxes, CalendarClock, ChefHat, CircleCheck, Clock, Flame, Gift, LayoutDashboard, Leaf, LogOut, MapPin,
   Menu, Recycle, RefreshCw, RotateCcw, Send, Smartphone, Sparkles, TrendingDown, TrendingUp, TriangleAlert,
-  Wallet, X, Zap,
+  SlidersHorizontal, Trash2, Wallet, X, Zap,
 } from 'lucide-react'
 import {
-  BAG_DISCOUNT, KG_PER_UNIT, analyzeStock, makePromo, projectMonthly, routeSurplus, sellThrough, sum,
+  KG_PER_UNIT, analyzeStock, makePromo, priceAfter, projectMonthly, routeSurplus, sellThrough, sum,
   summarizeRecovery,
 } from './engine'
+import { LiveDealRow, MenuPricing, PricingRules, PushControls } from './Pricing'
 import { CloseLog, ForecastPanel, ImpactPanel, PitchButton, RecoveryLadder } from './Recovery'
 import { cx, rm, shortName } from './format'
 import { EMPTY_LOG } from './store'
@@ -15,7 +16,6 @@ import { Card, Metric } from './ui'
 
 const TIMES = ['12:00 PM', '5:30 PM', '9:00 PM']
 const SERVICE_PHASE = { '12:00 PM': 'Lunch rush', '5:30 PM': 'Pre-dinner', '9:00 PM': 'Closing window' }
-const DISCOUNTS = [15, 30, 40, 50]
 const BRANCHES = ['Mid Valley', 'Sunway Pyramid', 'KLCC']
 
 const NAV = [
@@ -25,6 +25,7 @@ const NAV = [
   { id: 'recovery', label: 'Recovery Ladder', icon: Recycle },
   { id: 'impact', label: 'Impact', icon: Leaf },
   { id: 'forecast', label: "Tomorrow's Prep", icon: CalendarClock },
+  { id: 'pricing', label: 'Pricing & Rules', icon: SlidersHorizontal },
 ]
 
 const STATUS_BADGE = {
@@ -40,12 +41,13 @@ export default function RestaurantDashboard({ store }) {
   const {
     timeOfDay, setTimeOfDay, inventory, setInventory, activePromos, setActivePromos, notify,
     discounts, setDiscounts, category, setCategory, partners, setPartners, closeLog, setCloseLog,
-    pitchStep, resetDemo, goToPitchStep, setCurrentView,
+    pitchStep, resetDemo, goToPitchStep, setCurrentView, rules, setRules, updatePromo,
   } = store
+  const now = useNow()
   const [activeNav, setActiveNav] = useState('dashboard')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
-  const analyses = inventory.map((item) => ({ item, status: analyzeStock(item, timeOfDay) }))
+  const analyses = inventory.map((item) => ({ item, status: analyzeStock(item, timeOfDay, rules) }))
   const promoById = new Map(activePromos.map((p) => [p.id, p]))
   const insights = analyses.filter(({ item, status }) => status.type !== 'optimal' || promoById.has(item.id))
 
@@ -53,22 +55,50 @@ export default function RestaurantDashboard({ store }) {
     setInventory((inv) => inv.map((item) => {
       if (item.id !== id) return item
       if (field === 'sold') return { ...item, sold: clampInt(raw, item.prep) }
+      if (field === 'price' || field === 'cost') return { ...item, [field]: Math.max(0, Math.round((Number(raw) || 0) * 100) / 100) }
       const prep = clampInt(raw)
       return { ...item, prep, sold: Math.min(item.sold, prep) }
     }))
 
   const autoPrep = (id) =>
-    setInventory((inv) => inv.map((item) => (item.id === id ? { ...item, prep: item.prep + 20 } : item)))
+    setInventory((inv) => inv.map((item) => (item.id === id ? { ...item, prep: item.prep + rules.prepBoost } : item)))
+
+  const removeItem = (item) => {
+    setInventory((inv) => inv.filter((i) => i.id !== item.id))
+    setActivePromos((promos) => promos.filter((p) => p.id !== item.id))
+    notify('Dish removed from menu', item.name)
+  }
+
+  const addDish = (dish) => {
+    const id = Math.max(0, ...inventory.map((i) => i.id)) + 1
+    setInventory((inv) => [...inv, { id, short: dish.name, sold: 0, ...dish }])
+    notify('Dish added to menu', `${dish.name} · ${rm(dish.price)}`)
+  }
+
+  const bulkPrice = (scope, pct) => {
+    const factor = 1 + pct / 100
+    setInventory((inv) => inv.map((item) => (scope === 'All' || item.category === scope
+      ? { ...item, price: Math.max(0, Math.round(item.price * factor * 10) / 10) }
+      : item)))
+    notify(`Prices ${pct >= 0 ? 'raised' : 'lowered'} ${Math.abs(pct)}%`, scope === 'All' ? 'Whole menu' : scope)
+  }
 
   const flows = routeSurplus(inventory, activePromos, partners)
   const recovery = summarizeRecovery(flows)
   const projection = projectMonthly(recovery, closeLog.binned === '' ? NaN : Math.max(0, Number(closeLog.binned)))
 
-  const pushPromo = (item, discount, isBag = false) => {
+  const pushPromo = (item, discount, { isBag = false, units, minutes = rules.promoMinutes } = {}) => {
     if (promoById.has(item.id)) return
-    const promo = makePromo(item, isBag ? BAG_DISCOUNT : discount, timeOfDay, { isBag })
+    const promo = makePromo(item, isBag ? rules.bagDiscount : discount, timeOfDay, { isBag, units, minutes })
     setActivePromos((promos) => [...promos, promo])
     notify('Live on the CraveSave customer app', `${promo.name} · ${promo.discount}% off`)
+  }
+
+  const pushAllSuggested = () => {
+    const targets = insights.filter(({ item, status }) => status.discount && !promoById.has(item.id))
+    const promos = targets.map(({ item, status }) => makePromo(item, discounts[item.id] ?? status.discount, timeOfDay, { minutes: rules.promoMinutes }))
+    setActivePromos((list) => [...list, ...promos])
+    notify(`${promos.length} deals pushed to the customer app`, promos.map((p) => p.name).join(', '))
   }
 
   const endPromo = (promo) => {
@@ -116,6 +146,7 @@ export default function RestaurantDashboard({ store }) {
                 category={category}
                 onCategory={setCategory}
                 onUpdate={updateItem}
+                onRemove={removeItem}
               />
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                 <MenuMatrix inventory={inventory} />
@@ -131,8 +162,10 @@ export default function RestaurantDashboard({ store }) {
                 onDiscount={(id, pct) => setDiscounts((d) => ({ ...d, [id]: pct }))}
                 onPrep={autoPrep}
                 onPush={pushPromo}
+                onPushAll={pushAllSuggested}
+                rules={rules}
               />
-              <SyncPanel activePromos={activePromos} onEnd={endPromo} />
+              <SyncPanel activePromos={activePromos} now={now} onEdit={updatePromo} onEnd={endPromo} />
             </div>
           </div>
 
@@ -150,6 +183,11 @@ export default function RestaurantDashboard({ store }) {
           <div className="grid grid-cols-1 lg:grid-cols-3 items-start gap-6 mt-6">
             <ImpactPanel className="lg:col-span-2 min-w-0" projection={projection} />
             <ForecastPanel className="min-w-0" inventory={inventory} onApply={startTomorrow} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 items-start gap-6 mt-6">
+            <PricingRules className="lg:col-span-2 min-w-0" rules={rules} onRules={setRules} />
+            <MenuPricing className="min-w-0" inventory={inventory} onBulkPrice={bulkPrice} onAddDish={addDish} />
           </div>
           {pitchStep !== null && <div className="h-28" aria-hidden />}
         </main>
@@ -354,13 +392,14 @@ function StatusBadge({ type }) {
   return <span className={cx('inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset whitespace-nowrap', className)}>{label}</span>
 }
 
-function NumberInput({ label, value, max, onChange }) {
+function NumberInput({ label, value, max, step = 1, onChange }) {
   return (
     <input
       type="number"
-      inputMode="numeric"
+      inputMode={step < 1 ? 'decimal' : 'numeric'}
       min={0}
       max={max}
+      step={step}
       aria-label={label}
       value={value}
       onChange={(e) => onChange(e.target.value)}
@@ -369,7 +408,7 @@ function NumberInput({ label, value, max, onChange }) {
   )
 }
 
-function InventoryTable({ analyses, category, onCategory, onUpdate }) {
+function InventoryTable({ analyses, category, onCategory, onUpdate, onRemove }) {
   const categories = ['All', ...new Set(analyses.map(({ item }) => item.category))]
   const rows = analyses.filter(({ item }) => category === 'All' || item.category === category)
   const chips = (
@@ -392,13 +431,13 @@ function InventoryTable({ analyses, category, onCategory, onUpdate }) {
   )
 
   return (
-    <Card id="inventory" title="Inventory Manager" subtitle="Edit prepped and sold counts. Insights update live." action={chips}>
+    <Card id="inventory" title="Inventory Manager" subtitle="Edit prices, costs and counts. Insights update live." action={chips}>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-y border-slate-100 bg-slate-50/60 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-              {['Item', 'Cost', 'Price', 'Prepped', 'Sold', 'Remaining', 'Status'].map((h) => (
-                <th key={h} scope="col" className="px-3 py-2.5 font-medium first:pl-5 last:pr-5">{h}</th>
+              {['Item', 'Cost', 'Price', 'Prepped', 'Sold', 'Remaining', 'Status', ''].map((h, i) => (
+                <th key={h || i} scope="col" className="px-3 py-2.5 font-medium first:pl-5 last:pr-5">{h}</th>
               ))}
             </tr>
           </thead>
@@ -411,8 +450,15 @@ function InventoryTable({ analyses, category, onCategory, onUpdate }) {
                     <div className="font-medium whitespace-nowrap">{item.name}</div>
                     <div className="text-xs text-slate-500">{item.category}</div>
                   </td>
-                  <td className="px-3 py-3 tabular-nums text-slate-500">{rm(item.cost)}</td>
-                  <td className="px-3 py-3 tabular-nums">{rm(item.price)}</td>
+                  <td className="px-3 py-3">
+                    <NumberInput label={`${item.name} cost`} value={item.cost} step={0.1} onChange={(v) => onUpdate(item.id, 'cost', v)} />
+                  </td>
+                  <td className="px-3 py-3">
+                    <NumberInput label={`${item.name} price`} value={item.price} step={0.1} onChange={(v) => onUpdate(item.id, 'price', v)} />
+                    <div className={cx('mt-0.5 text-[11px] tabular-nums', item.price < item.cost ? 'text-rose-600 font-medium' : 'text-slate-500')}>
+                      {item.price > 0 ? `${Math.round(((item.price - item.cost) / item.price) * 100)}% margin` : 'No price'}
+                    </div>
+                  </td>
                   <td className="px-3 py-3">
                     <NumberInput label={`${item.name} prepped`} value={item.prep} onChange={(v) => onUpdate(item.id, 'prep', v)} />
                   </td>
@@ -428,7 +474,12 @@ function InventoryTable({ analyses, category, onCategory, onUpdate }) {
                       <div className="bg-violet-500 h-full rounded-full transition-[width] duration-300 ease-out" style={{ width: `${pct}%` }} />
                     </div>
                   </td>
-                  <td className="pl-3 pr-5 py-3"><StatusBadge type={status.type} /></td>
+                  <td className="px-3 py-3"><StatusBadge type={status.type} /></td>
+                  <td className="pl-1 pr-4 py-3">
+                    <button type="button" aria-label={`Remove ${item.name}`} onClick={() => onRemove(item)} className="rounded-md p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50">
+                      <Trash2 size={15} />
+                    </button>
+                  </td>
                 </tr>
               )
             })}
@@ -526,12 +577,18 @@ function WasteExposure({ inventory }) {
   )
 }
 
-function ActionCenter({ insights, promoById, discounts, onDiscount, onPrep, onPush }) {
+function ActionCenter({ insights, promoById, discounts, onDiscount, onPrep, onPush, onPushAll, rules }) {
+  const pushable = insights.filter(({ item, status }) => status.discount && !promoById.has(item.id)).length
   return (
     <Card
       id="insights"
       title={<span className="flex items-center gap-2">AI Insights Engine <Sparkles size={18} className="text-violet-500 animate-pulse" aria-hidden /></span>}
       subtitle={`${insights.length} ${insights.length === 1 ? 'action' : 'actions'} recommended`}
+      action={pushable > 1 && (
+        <button type="button" onClick={onPushAll} className="flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 active:scale-95 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 focus-visible:ring-offset-2">
+          <Send size={13} /> Push all {pushable}
+        </button>
+      )}
     >
       <div className="px-4 pb-4 flex flex-col gap-3" aria-live="polite">
         {insights.length === 0 && (
@@ -544,15 +601,15 @@ function ActionCenter({ insights, promoById, discounts, onDiscount, onPrep, onPu
         {insights.map(({ item, status }) => {
           const promo = promoById.get(item.id)
           return status.type === 'understock' && !promo
-            ? <UnderstockCard key={item.id} item={item} status={status} onPrep={onPrep} />
-            : <OverstockCard key={item.id} item={item} status={status} promo={promo} discount={discounts[item.id] ?? status.discount ?? 15} onDiscount={onDiscount} onPush={onPush} />
+            ? <UnderstockCard key={item.id} item={item} status={status} onPrep={onPrep} boost={rules.prepBoost} />
+            : <OverstockCard key={item.id} item={item} status={status} promo={promo} discount={discounts[item.id] ?? status.discount ?? rules.surplusDiscount} onDiscount={onDiscount} onPush={onPush} rules={rules} />
         })}
       </div>
     </Card>
   )
 }
 
-function UnderstockCard({ item, status, onPrep }) {
+function UnderstockCard({ item, status, onPrep, boost }) {
   return (
     <article className="card-in rounded-xl border border-amber-200 bg-amber-50 p-4">
       <div className="flex items-start gap-3">
@@ -571,18 +628,19 @@ function UnderstockCard({ item, status, onPrep }) {
         onClick={() => onPrep(item.id)}
         className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg bg-amber-500 text-amber-950 px-3 py-2 text-sm font-semibold shadow-sm hover:bg-amber-400 active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 focus-visible:ring-offset-2"
       >
-        <ChefHat size={16} /> Auto-Prep +20
+        <ChefHat size={16} /> Auto-Prep +{boost}
       </button>
     </article>
   )
 }
 
-function OverstockCard({ item, status, promo, discount, onDiscount, onPush }) {
+function OverstockCard({ item, status, promo, discount, onDiscount, onPush, rules }) {
+  const [units, setUnits] = useState(() => Math.max(0, item.prep - item.sold))
+  const [minutes, setMinutes] = useState(rules.promoMinutes)
   const isCritical = status.type === 'overstock_critical'
   const left = promo ? promo.units : item.prep - item.sold
   const pct = promo ? promo.discount : discount
   const Icon = isCritical ? Flame : TrendingDown
-  const selectId = `discount-${item.id}`
   const tone = isCritical
     ? { card: 'border-violet-200 bg-violet-50', icon: 'bg-violet-100 text-violet-700', text: 'text-violet-900', ink: 'text-violet-950', field: 'border-violet-200 focus:ring-violet-500/30' }
     : { card: 'border-rose-200 bg-rose-50', icon: 'bg-rose-100 text-rose-700', text: 'text-rose-900', ink: 'text-rose-950', field: 'border-rose-200 focus:ring-rose-500/30' }
@@ -606,23 +664,20 @@ function OverstockCard({ item, status, promo, discount, onDiscount, onPush }) {
       <dl className={cx('mt-3 grid grid-cols-3 gap-2 text-sm', tone.ink)}>
         <Metric label="Loss risk" value={rm(left * item.cost)} />
         <Metric label="Surplus" value={left} />
-        <Metric label="App price" value={rm(Math.round(item.price * (100 - pct)) / 100)} />
+        <Metric label="App price" value={rm(priceAfter(item.price, pct))} />
       </dl>
 
       {!promo && (
-        <div className="mt-3 flex items-center gap-2">
-          <label htmlFor={selectId} className={cx('text-xs font-medium', tone.text)}>Discount</label>
-          <select
-            id={selectId}
-            value={pct}
-            onChange={(e) => onDiscount(item.id, Number(e.target.value))}
-            className={cx('flex-1 rounded-md border bg-white px-2 py-1.5 text-sm tabular-nums focus:outline-none focus:ring-2', tone.field)}
-          >
-            {DISCOUNTS.map((d) => (
-              <option key={d} value={d}>{d}% off{d === status.discount ? ' (suggested)' : ''}</option>
-            ))}
-          </select>
-        </div>
+        <PushControls
+          item={item}
+          discount={pct}
+          onDiscount={(d) => onDiscount(item.id, d)}
+          units={units}
+          onUnits={setUnits}
+          minutes={minutes}
+          onMinutes={setMinutes}
+          tone={isCritical ? 'violet' : 'rose'}
+        />
       )}
 
       {promo ? (
@@ -631,12 +686,12 @@ function OverstockCard({ item, status, promo, discount, onDiscount, onPush }) {
         </button>
       ) : (
         <div className="mt-3 flex flex-col gap-2">
-          <button type="button" onClick={() => onPush(item, pct)} className={cx(pushBtn, 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500/50')}>
+          <button type="button" onClick={() => onPush(item, pct, { units, minutes })} className={cx(pushBtn, 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500/50')}>
             <Send size={15} /> Push to Customer App
           </button>
           {isCritical && (
-            <button type="button" onClick={() => onPush(item, pct, true)} className={cx(pushBtn, 'border border-violet-300 bg-white text-violet-700 hover:bg-violet-100 focus-visible:ring-violet-500/50')}>
-              <Gift size={15} /> Push as Mystery Bag ({BAG_DISCOUNT}% off)
+            <button type="button" onClick={() => onPush(item, pct, { isBag: true, units, minutes })} className={cx(pushBtn, 'border border-violet-300 bg-white text-violet-700 hover:bg-violet-100 focus-visible:ring-violet-500/50')}>
+              <Gift size={15} /> Push as Mystery Bag ({rules.bagDiscount}% off)
             </button>
           )}
         </div>
@@ -645,33 +700,29 @@ function OverstockCard({ item, status, promo, discount, onDiscount, onPush }) {
   )
 }
 
-function SyncPanel({ activePromos, onEnd }) {
+function SyncPanel({ activePromos, now, onEdit, onEnd }) {
   return (
-    <Card id="sync" title="Live on Customer App" subtitle="Deals customers can order right now">
+    <Card id="sync" title="Live on Customer App" subtitle="Reprice, restock, extend or pause any live deal">
       {activePromos.length === 0 ? (
         <p className="px-5 pb-5 text-sm text-slate-500">Nothing live yet. Push a surplus item from the AI Insights Engine.</p>
       ) : (
-        <ul className="px-3 pb-3">
+        <ul className="px-3 pb-3 flex flex-col gap-1">
           {activePromos.map((promo) => (
-            <li key={promo.id} className="card-in flex items-center gap-3 rounded-lg px-2 py-2.5 hover:bg-slate-50">
-              <span className="grid place-items-center size-9 shrink-0 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold tabular-nums">-{promo.discount}%</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium truncate">{promo.name}</p>
-                <p className="text-xs text-slate-500 tabular-nums">{promo.units} portions at {rm(promo.promoPrice)}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => onEnd(promo)}
-                className="rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50"
-              >
-                End
-              </button>
-            </li>
+            <LiveDealRow key={promo.id} promo={promo} now={now} onEdit={(patch) => onEdit(promo.id, patch)} onEnd={() => onEnd(promo)} />
           ))}
         </ul>
       )}
     </Card>
   )
+}
+
+function useNow() {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15_000)
+    return () => clearInterval(timer)
+  }, [])
+  return now
 }
 
 export function Toast({ toast, onClose }) {

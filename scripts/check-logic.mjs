@@ -1,7 +1,7 @@
 // Self-check for the engine against the seed data. Run: npm run check
 import assert from 'node:assert/strict'
 import {
-  ALL_PARTNERS, NO_PARTNERS, analyzeStock, applyOrder, forecastPrep, makePromo, projectMonthly, routeSurplus,
+  ALL_PARTNERS, DEFAULT_RULES, NO_PARTNERS, analyzeStock, applyOrder, editPromo, forecastPrep, makePromo, projectMonthly, routeSurplus,
   summarizeRecovery,
 } from '../src/engine.js'
 
@@ -71,5 +71,20 @@ assert.equal(ordered.promos[0].units, 27)
 assert.equal(seed[1].sold, 12, 'applyOrder does not mutate its input')
 assert.equal(applyOrder(seed, [{ ...chop, units: 0 }], 2).ok, false)
 assert.equal(applyOrder(seed, [chop], 99).ok, false)
+
+// configurable rules: stricter thresholds change the verdict, custom discounts flow through
+const strict = { ...DEFAULT_RULES, criticalAt: 30, criticalDiscount: 55 }
+assert.equal(analyzeStock(item(40, 12), '9:00 PM', strict).type, 'optimal') // 28 left is not > 30
+assert.equal(analyzeStock(item(80, 30), '9:00 PM', strict).discount, 55)
+
+// custom push options and live edits
+const custom = makePromo(seed[1], 30, '9:00 PM', { units: 5, minutes: 30, createdAt: 0 })
+assert.equal(custom.units, 5)
+assert.equal(custom.expiresAt, 30 * 60_000)
+const repriced = editPromo(custom, { discount: 70 })
+assert.equal(repriced.promoPrice, 6.6) // 22 * 0.3
+assert.ok(repriced.promoPrice < repriced.cost, 'below-cost pricing is allowed (liberal), the UI only warns')
+assert.equal(editPromo(custom, { units: -3 }).units, 0)
+assert.equal(applyOrder(seed, [{ ...custom, paused: true }], 2).ok, false, 'paused deals cannot be ordered')
 
 console.log('engine: all checks passed')
