@@ -23,6 +23,11 @@ export const STREAMS = [
 export const NO_PARTNERS = { staff: false, donate: false, feed: false, compost: false }
 export const ALL_PARTNERS = { staff: true, donate: true, feed: true, compost: true }
 
+export const EXPECTED_NOON_SELL_THROUGH = 0.45 // ASSUMPTION: a normal day has sold 45% by noon
+export const CO2E_PER_MEAL = KG_PER_UNIT * CO2E_PER_KG
+export const PROMO_LIFETIME_MIN = 90
+export const BAG_DISCOUNT = 60
+
 export const sum = (list, fn) => list.reduce((total, x) => total + fn(x), 0)
 export const sellThrough = (item) => (item.prep > 0 ? item.sold / item.prep : 0)
 export const surplusOf = (item) => Math.max(0, item.prep - item.sold)
@@ -34,25 +39,40 @@ export const surplusOf = (item) => Math.max(0, item.prep - item.sold)
 export function analyzeStock(item, time) {
   const left = item.prep - item.sold
   if (time === '12:00 PM' && sellThrough(item) > 0.85) {
-    return { type: 'understock', message: 'High stockout risk before dinner.', suggestedAction: 'Prep +20' }
+    const pace = sellThrough(item) / EXPECTED_NOON_SELL_THROUGH
+    return { type: 'understock', message: `Understock risk: selling ${pace.toFixed(1)}× faster than usual.`, suggestedAction: 'Prep +20', pace }
   }
   if (time === '5:30 PM' && left > 15) {
     return { type: 'overstock', message: 'Moderate surplus.', suggestedAction: '15% discount', discount: 15 }
   }
   if (time === '9:00 PM' && left > 10) {
-    return { type: 'overstock_critical', message: 'Critical waste risk.', suggestedAction: '40% Flash Sale', discount: 40 }
+    return { type: 'overstock_critical', message: 'Critical waste risk.', suggestedAction: '40% Flash Sale or Mystery Bag', discount: 40 }
   }
   return { type: 'optimal', message: 'Stock is on track.', suggestedAction: null }
 }
 
-export function makePromo(item, discount, time) {
+export function makePromo(item, discount, time, { isBag = false, createdAt = Date.now() } = {}) {
   return {
     id: item.id,
-    name: item.name,
+    name: isBag ? `Mystery Bag: ${item.short ?? item.name}` : item.name,
+    isBag,
     discount,
     units: surplusOf(item),
+    originalPrice: item.price,
     promoPrice: Math.round(item.price * (100 - discount)) / 100,
     pushedAt: time,
+    expiresAt: createdAt + PROMO_LIFETIME_MIN * 60_000,
+  }
+}
+
+/** A customer buys one portion of a live promo: the restaurant's sold count and the promo stock move together. */
+export function applyOrder(inventory, promos, promoId) {
+  const promo = promos.find((p) => p.id === promoId)
+  if (!promo || promo.units <= 0) return { inventory, promos, ok: false }
+  return {
+    ok: true,
+    inventory: inventory.map((item) => (item.id === promoId ? { ...item, sold: Math.min(item.prep, item.sold + 1) } : item)),
+    promos: promos.map((p) => (p.id === promoId ? { ...p, units: p.units - 1 } : p)),
   }
 }
 

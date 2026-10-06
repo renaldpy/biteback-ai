@@ -1,7 +1,7 @@
 // Self-check for the engine against the seed data. Run: npm run check
 import assert from 'node:assert/strict'
 import {
-  ALL_PARTNERS, NO_PARTNERS, analyzeStock, forecastPrep, makePromo, projectMonthly, routeSurplus,
+  ALL_PARTNERS, NO_PARTNERS, analyzeStock, applyOrder, forecastPrep, makePromo, projectMonthly, routeSurplus,
   summarizeRecovery,
 } from '../src/engine.js'
 
@@ -55,5 +55,21 @@ const predicted = projectMonthly(summary, NaN)
 const measured = projectMonthly(summary, summary.totalKg)
 assert.equal(predicted.isMeasured, false)
 assert.equal(measured.divertedKg, 0, 'binning everything means nothing diverted')
+
+// understock pace message: 90% sold vs 45% expected = 2.0x
+assert.match(analyzeStock(item(60, 54), '12:00 PM').message, /2\.0× faster/)
+
+// applyOrder: one order moves sold and promo stock together, and refuses sold-out deals
+const chop = makePromo(seed[1], 40, '9:00 PM', { createdAt: 0 })
+assert.equal(chop.expiresAt, 90 * 60_000)
+const bag = makePromo(seed[3], 60, '9:00 PM', { isBag: true })
+assert.equal(bag.name, 'Mystery Bag: Kaya Toast')
+const ordered = applyOrder(seed, [chop], 2)
+assert.equal(ordered.ok, true)
+assert.equal(ordered.inventory.find((i) => i.id === 2).sold, 13)
+assert.equal(ordered.promos[0].units, 27)
+assert.equal(seed[1].sold, 12, 'applyOrder does not mutate its input')
+assert.equal(applyOrder(seed, [{ ...chop, units: 0 }], 2).ok, false)
+assert.equal(applyOrder(seed, [chop], 99).ok, false)
 
 console.log('engine: all checks passed')

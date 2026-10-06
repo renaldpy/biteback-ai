@@ -20,13 +20,25 @@ html {
   to { transform: none; }
 }
 
+@keyframes sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
+@keyframes route-dash {
+  to { stroke-dashoffset: -12; }
+}
+
+.sheet-in[open] { animation: sheet-in 320ms cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.route-dash { stroke-dasharray: 4 2; animation: route-dash 1s linear infinite; }
 .drawer-in[open] { animation: drawer-in 280ms cubic-bezier(0.2, 0.9, 0.3, 1) both; }
 .toast-in { animation: rise-in 320ms cubic-bezier(0.2, 0.9, 0.3, 1) both; }
 .card-in { animation: rise-in 240ms cubic-bezier(0.2, 0.9, 0.3, 1) both; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .toast-in, .card-in, .drawer-in[open] { animation: fade-in 150ms ease both; }
+  .toast-in, .card-in, .drawer-in[open], .sheet-in[open] { animation: fade-in 150ms ease both; }
+  .route-dash { animation: none; }
 }
 
 @media (prefers-reduced-transparency: reduce) {

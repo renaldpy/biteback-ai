@@ -176,8 +176,8 @@ export function CloseLog({ summary, log, onLog, className }) {
   const binned = toKg(log.binned)
   const donated = toKg(log.donated)
   const rows = [
-    { key: 'binned', label: 'Binned to landfill', predicted: summary.byStream.landfill.kg, actual: binned },
-    { key: 'donated', label: 'Collected by food bank', predicted: summary.byStream.donate.kg, actual: donated },
+    { field: 'binned', label: 'Binned to landfill', predicted: summary.byStream.landfill.kg, actual: binned },
+    { field: 'donated', label: 'Collected by food bank', predicted: summary.byStream.donate.kg, actual: donated },
   ]
   const max = Math.max(1, ...rows.flatMap((r) => [r.predicted, Number.isFinite(r.actual) ? r.actual : 0])) * 1.1
 
@@ -186,22 +186,22 @@ export function CloseLog({ summary, log, onLog, className }) {
       <div className="px-5 pb-5 flex flex-col gap-5">
         <div className="grid grid-cols-2 gap-3">
           {rows.map((r) => (
-            <label key={r.key} className="text-xs font-medium text-slate-600">
-              {r.key === 'binned' ? 'Binned (kg)' : 'Donated (kg)'}
+            <label key={r.field} className="text-xs font-medium text-slate-600">
+              {r.field === 'binned' ? 'Binned (kg)' : 'Donated (kg)'}
               <input
                 type="number"
                 inputMode="decimal"
                 min={0}
                 step={0.1}
                 placeholder={r.predicted.toFixed(1)}
-                value={log[r.key]}
-                onChange={(e) => onLog({ ...log, [r.key]: e.target.value })}
+                value={log[r.field]}
+                onChange={(e) => onLog({ ...log, [r.field]: e.target.value })}
                 className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm tabular-nums shadow-xs transition focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30"
               />
             </label>
           ))}
         </div>
-        {rows.map((r) => <Dumbbell key={r.key} {...r} max={max} />)}
+        {rows.map((r) => <Dumbbell key={r.field} label={r.label} predicted={r.predicted} actual={r.actual} max={max} />)}
         <div className="flex items-center gap-4 text-xs text-slate-500">
           <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full border-2 border-slate-500" /> Predicted</span>
           <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-indigo-600" /> Logged</span>

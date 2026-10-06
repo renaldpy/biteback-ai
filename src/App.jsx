@@ -1,33 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Boxes, CalendarClock, ChefHat, CircleCheck, Clock, Flame, LayoutDashboard, Leaf, Menu, Recycle,
-  RefreshCw, RotateCcw, Send, Sparkles, TrendingDown, TrendingUp, TriangleAlert, Wallet, X, Zap,
+  Boxes, CalendarClock, ChefHat, CircleCheck, Clock, Flame, Gift, LayoutDashboard, Leaf, LogOut, MapPin,
+  Menu, Recycle, RefreshCw, RotateCcw, Send, Smartphone, Sparkles, TrendingDown, TrendingUp, TriangleAlert,
+  Wallet, X, Zap,
 } from 'lucide-react'
 import {
-  ALL_PARTNERS, KG_PER_UNIT, NO_PARTNERS, analyzeStock, makePromo, projectMonthly, routeSurplus,
-  sellThrough, sum, summarizeRecovery,
+  BAG_DISCOUNT, KG_PER_UNIT, analyzeStock, makePromo, projectMonthly, routeSurplus, sellThrough, sum,
+  summarizeRecovery,
 } from './engine'
-import { CloseLog, ForecastPanel, ImpactPanel, PitchBar, PitchButton, RecoveryLadder } from './Recovery'
+import { CloseLog, ForecastPanel, ImpactPanel, PitchButton, RecoveryLadder } from './Recovery'
 import { cx, rm, shortName } from './format'
+import { EMPTY_LOG } from './store'
 import { Card, Metric } from './ui'
 
 const TIMES = ['12:00 PM', '5:30 PM', '9:00 PM']
 const SERVICE_PHASE = { '12:00 PM': 'Lunch rush', '5:30 PM': 'Pre-dinner', '9:00 PM': 'Closing window' }
 const DISCOUNTS = [15, 30, 40, 50]
-const TOAST_MS = 3000
-
-const SEED_INVENTORY = [
-  { id: 1, short: 'Nasi Lemak', name: 'Signature Nasi Lemak', price: 14.0, cost: 6.0, prep: 60, sold: 54, category: 'Mains' },
-  { id: 2, short: 'Chicken Chop', name: 'Crispy Chicken Chop', price: 22.0, cost: 9.5, prep: 40, sold: 12, category: 'Mains' },
-  { id: 3, short: 'Curry Laksa', name: 'Nyonya Curry Laksa', price: 16.0, cost: 7.0, prep: 45, sold: 42, category: 'Noodles' },
-  { id: 4, short: 'Kaya Toast', name: 'Kaya Butter Toast Set', price: 6.5, cost: 2.0, prep: 80, sold: 30, category: 'Sides' },
-  { id: 5, short: 'Teh Tarik', name: 'Teh Tarik (Cold)', price: 4.5, cost: 1.2, prep: 90, sold: 75, category: 'Drinks' },
-]
+const BRANCHES = ['Mid Valley', 'Sunway Pyramid', 'KLCC']
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'inventory', label: 'Live Inventory', icon: Boxes },
-  { id: 'sync', label: 'GrabFood Sync', icon: RefreshCw },
+  { id: 'sync', label: 'Live Promos', icon: RefreshCw },
   { id: 'recovery', label: 'Recovery Ladder', icon: Recycle },
   { id: 'impact', label: 'Impact', icon: Leaf },
   { id: 'forecast', label: "Tomorrow's Prep", icon: CalendarClock },
@@ -37,41 +31,19 @@ const STATUS_BADGE = {
   optimal: { label: 'Optimal', className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
   understock: { label: 'Low stock', className: 'bg-amber-50 text-amber-800 ring-amber-600/25' },
   overstock: { label: 'Surplus', className: 'bg-rose-50 text-rose-700 ring-rose-600/20' },
-  overstock_critical: { label: 'Critical', className: 'bg-rose-600 text-white ring-rose-700' },
+  overstock_critical: { label: 'Critical', className: 'bg-violet-600 text-white ring-violet-700' },
 }
 
 const clampInt = (raw, max = Infinity) => Math.min(max, Math.max(0, Math.floor(Number(raw) || 0)))
-const EMPTY_LOG = { binned: '', donated: '' }
 
-// Each step fully describes the demo state, so jumping back and forth is safe.
-const PITCH_STEPS = [
-  { title: 'Lunch rush', caption: 'Nasi Lemak and Laksa are 90% sold by noon. The engine flags a stockout before dinner.', time: '12:00 PM', flashSale: false, partners: NO_PARTNERS, target: 'insights' },
-  { title: 'Surplus builds', caption: 'By 5:30 PM, Chicken Chop and Kaya Toast are over-prepped. The engine suggests a 15% discount.', time: '5:30 PM', flashSale: false, partners: NO_PARTNERS, target: 'insights' },
-  { title: 'Flash sale', caption: 'At 9 PM, three dishes go live on GrabFood at 40% off in one tap each.', time: '9:00 PM', flashSale: true, partners: NO_PARTNERS, target: 'sync' },
-  { title: 'Today: the bin', caption: 'Even after the sale, everything unsold goes to landfill. This is how most outlets close today.', time: '9:00 PM', flashSale: true, partners: NO_PARTNERS, target: 'recovery' },
-  { title: 'Waste to value', caption: 'Switch on partners and the same surplus becomes staff meals, food-bank meals and insect feed.', time: '9:00 PM', flashSale: true, partners: ALL_PARTNERS, target: 'recovery' },
-  { title: '30-day impact', caption: 'Repeated for 30 days at one outlet. Log real weights at close and these numbers become measured, not predicted.', time: '9:00 PM', flashSale: true, partners: ALL_PARTNERS, target: 'impact' },
-  { title: 'Fix it at the source', caption: "Tomorrow's prep plan cuts over-prepping, so there is less surplus to rescue at all.", time: '9:00 PM', flashSale: true, partners: ALL_PARTNERS, target: 'forecast' },
-]
-
-export default function App() {
-  const [timeOfDay, setTimeOfDay] = useState('12:00 PM')
-  const [inventory, setInventory] = useState(SEED_INVENTORY)
-  const [activePromos, setActivePromos] = useState([])
-  const [toast, setToast] = useState(null)
-  const [discounts, setDiscounts] = useState({})
-  const [category, setCategory] = useState('All')
+export default function RestaurantDashboard({ store }) {
+  const {
+    timeOfDay, setTimeOfDay, inventory, setInventory, activePromos, setActivePromos, notify,
+    discounts, setDiscounts, category, setCategory, partners, setPartners, closeLog, setCloseLog,
+    pitchStep, resetDemo, goToPitchStep, setCurrentView,
+  } = store
   const [activeNav, setActiveNav] = useState('dashboard')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [partners, setPartners] = useState(NO_PARTNERS)
-  const [closeLog, setCloseLog] = useState(EMPTY_LOG)
-  const [pitchStep, setPitchStep] = useState(null)
-
-  useEffect(() => {
-    if (!toast) return
-    const timer = setTimeout(() => setToast(null), TOAST_MS)
-    return () => clearTimeout(timer)
-  }, [toast])
 
   const analyses = inventory.map((item) => ({ item, status: analyzeStock(item, timeOfDay) }))
   const promoById = new Map(activePromos.map((p) => [p.id, p]))
@@ -92,43 +64,16 @@ export default function App() {
   const recovery = summarizeRecovery(flows)
   const projection = projectMonthly(recovery, closeLog.binned === '' ? NaN : Math.max(0, Number(closeLog.binned)))
 
-  useEffect(() => {
-    if (pitchStep === null) return
-    document.getElementById(PITCH_STEPS[pitchStep].target)?.scrollIntoView({ block: 'center' })
-  }, [pitchStep])
-
-  const pushPromo = (item, discount) => {
+  const pushPromo = (item, discount, isBag = false) => {
     if (promoById.has(item.id)) return
-    setActivePromos((promos) => [...promos, makePromo(item, discount, timeOfDay)])
-    setToast({ key: Date.now(), message: 'Successfully synced with GrabFood API', detail: `${item.name} · ${discount}% off` })
+    const promo = makePromo(item, isBag ? BAG_DISCOUNT : discount, timeOfDay, { isBag })
+    setActivePromos((promos) => [...promos, promo])
+    notify('Live on the BiteBack customer app', `${promo.name} · ${promo.discount}% off`)
   }
 
   const endPromo = (promo) => {
     setActivePromos((promos) => promos.filter((p) => p.id !== promo.id))
-    setToast({ key: Date.now(), message: 'Promo withdrawn from GrabFood', detail: promo.name })
-  }
-
-  const loadScenario = ({ time, flashSale, partners: nextPartners }) => {
-    const flashPromos = SEED_INVENTORY
-      .filter((item) => analyzeStock(item, '9:00 PM').type === 'overstock_critical')
-      .map((item) => makePromo(item, 40, '9:00 PM'))
-    setTimeOfDay(time)
-    setInventory(SEED_INVENTORY)
-    setActivePromos(flashSale ? flashPromos : [])
-    setPartners(nextPartners)
-    setCloseLog(EMPTY_LOG)
-    setDiscounts({})
-    setCategory('All')
-  }
-
-  const resetDemo = () => {
-    setPitchStep(null)
-    loadScenario({ time: '12:00 PM', flashSale: false, partners: NO_PARTNERS })
-  }
-
-  const goToPitchStep = (n) => {
-    loadScenario(PITCH_STEPS[n])
-    setPitchStep(n)
+    notify('Promo withdrawn from the customer app', promo.name)
   }
 
   const startTomorrow = (rows) => {
@@ -137,19 +82,20 @@ export default function App() {
     setCloseLog(EMPTY_LOG)
     setDiscounts({})
     setTimeOfDay('12:00 PM')
-    setToast({ key: Date.now(), message: "Tomorrow's prep plan loaded", detail: `${sum(rows, (r) => r.next)} portions across ${rows.length} dishes` })
+    notify("Tomorrow's prep plan loaded", `${sum(rows, (r) => r.next)} portions across ${rows.length} dishes`)
     window.scrollTo({ top: 0 })
   }
 
   return (
     <div className="min-h-screen bg-slate-50 flex text-slate-900">
-      <Sidebar active={activeNav} onNavigate={setActiveNav} onReset={resetDemo} />
+      <Sidebar active={activeNav} onNavigate={setActiveNav} onReset={resetDemo} onSwitch={setCurrentView} />
       <MobileNav
         open={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}
         active={activeNav}
         onNavigate={setActiveNav}
         onReset={resetDemo}
+        onSwitch={setCurrentView}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -209,10 +155,6 @@ export default function App() {
         </main>
       </div>
 
-      <Toast toast={toast} onClose={() => setToast(null)} />
-      {pitchStep !== null && (
-        <PitchBar steps={PITCH_STEPS} step={pitchStep} onStep={goToPitchStep} onExit={() => setPitchStep(null)} />
-      )}
     </div>
   )
 }
@@ -247,7 +189,7 @@ function MobileNav({ open, onClose, onNavigate, ...props }) {
         type="button"
         onClick={onClose}
         aria-label="Close menu"
-        className="absolute top-4 right-3 rounded-md p-1.5 text-slate-400 hover:text-white hover:bg-white/10 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+        className="absolute top-4 right-3 rounded-md p-1.5 text-slate-400 hover:text-white hover:bg-white/10 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
       >
         <X size={18} />
       </button>
@@ -259,14 +201,14 @@ function MobileNav({ open, onClose, onNavigate, ...props }) {
   )
 }
 
-function SidebarBody({ active, onNavigate, onReset }) {
+function SidebarBody({ active, onNavigate, onReset, onSwitch }) {
   return (
     <>
       <div className="flex items-center gap-2.5 px-5 h-16 border-b border-white/5">
-        <span className="grid place-items-center size-8 rounded-lg bg-indigo-600 text-white">
+        <span className="grid place-items-center size-8 rounded-lg bg-violet-600 text-white">
           <ChefHat size={18} />
         </span>
-        <span className="font-semibold tracking-tight text-white">BiteBack <span className="text-indigo-400">AI</span></span>
+        <span className="font-semibold tracking-tight text-white">BiteBack <span className="text-violet-400">AI</span></span>
       </div>
 
       <nav aria-label="Primary" className="flex flex-col gap-1 p-3">
@@ -278,8 +220,8 @@ function SidebarBody({ active, onNavigate, onReset }) {
             aria-current={active === id ? 'page' : undefined}
             className={cx(
               'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400',
-              active === id ? 'bg-indigo-600 text-white' : 'hover:bg-white/5 hover:text-white',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400',
+              active === id ? 'bg-violet-600 text-white' : 'hover:bg-white/5 hover:text-white',
             )}
           >
             <Icon size={17} />
@@ -292,16 +234,30 @@ function SidebarBody({ active, onNavigate, onReset }) {
         <div className="rounded-xl bg-white/5 p-3 text-xs">
           <div className="flex items-center gap-2 text-slate-200 font-medium">
             <span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_0_3px] shadow-emerald-400/20" />
-            GrabFood connected
+            Customer app connected
           </div>
-          <p className="mt-1 text-slate-400">Menu sync · Merchant #MV-0412</p>
+          <p className="mt-1 text-slate-400">Live feed · Partner #MV-0412</p>
         </div>
         <button
           type="button"
+          onClick={() => onSwitch('customer')}
+          className="flex items-center justify-center gap-2 rounded-lg bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/25 active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+        >
+          <Smartphone size={14} /> Open customer app
+        </button>
+        <button
+          type="button"
           onClick={onReset}
-          className="flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5 hover:text-white active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          className="flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5 hover:text-white active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
           <RotateCcw size={14} /> Reset demo
+        </button>
+        <button
+          type="button"
+          onClick={() => onSwitch('auth')}
+          className="flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        >
+          <LogOut size={14} /> Log out
         </button>
       </div>
     </>
@@ -309,6 +265,7 @@ function SidebarBody({ active, onNavigate, onReset }) {
 }
 
 function Header({ timeOfDay, onTimeChange, onMenu, onPitch }) {
+  const [branch, setBranch] = useState(BRANCHES[0])
   return (
     <header className="glass sticky top-0 z-20 bg-slate-50/80 backdrop-blur-md border-b border-slate-200/70">
       <div className="flex flex-wrap items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 h-auto min-h-16 py-3">
@@ -317,15 +274,28 @@ function Header({ timeOfDay, onTimeChange, onMenu, onPitch }) {
             type="button"
             onClick={onMenu}
             aria-label="Open menu"
-            className="lg:hidden -ml-1 rounded-lg p-2 text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 active:scale-[0.96] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50"
+            className="lg:hidden -ml-1 rounded-lg p-2 text-slate-600 hover:bg-slate-200/60 hover:text-slate-900 active:scale-[0.96] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50"
           >
             <Menu size={20} />
           </button>
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-              <span className="lg:hidden text-indigo-600">BiteBack AI · </span>{SERVICE_PHASE[timeOfDay]}
+              <span className="lg:hidden text-violet-600">BiteBack AI · </span>{SERVICE_PHASE[timeOfDay]}
             </p>
-            <h1 className="text-xl font-semibold tracking-tight">Mid Valley Outlet</h1>
+            <h1 className="text-xl font-semibold tracking-tight">
+              <label htmlFor="branch" className="sr-only">Branch</label>
+              <span className="relative inline-flex items-center">
+                <MapPin size={16} className="absolute left-0 text-violet-600 pointer-events-none" aria-hidden />
+                <select
+                  id="branch"
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                  className="appearance-none bg-transparent pl-5 pr-1 font-semibold tracking-tight rounded-md cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50"
+                >
+                  {BRANCHES.map((b, i) => <option key={b} value={b} disabled={i > 0}>{b} Outlet{i > 0 ? ' (onboarding)' : ''}</option>)}
+                </select>
+              </span>
+            </h1>
           </div>
         </div>
 
@@ -340,8 +310,8 @@ function Header({ timeOfDay, onTimeChange, onMenu, onPitch }) {
                 onClick={() => onTimeChange(time)}
                 className={cx(
                   'rounded-full px-3 py-1.5 text-sm tabular-nums transition active:scale-[0.97]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50',
-                  time === timeOfDay ? 'bg-indigo-100 text-indigo-700 font-medium' : 'text-slate-600 hover:text-slate-900',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50',
+                  time === timeOfDay ? 'bg-violet-100 text-violet-700 font-medium' : 'text-slate-600 hover:text-slate-900',
                 )}
               >
                 {time}
@@ -358,10 +328,10 @@ function Header({ timeOfDay, onTimeChange, onMenu, onPitch }) {
 function KpiRow({ inventory, activePromos }) {
   const units = sum(activePromos, (p) => p.units)
   const cards = [
-    { label: 'Gross Revenue', value: rm(sum(inventory, (i) => i.sold * i.price)), note: `${sum(inventory, (i) => i.sold)} portions sold`, icon: TrendingUp, tint: 'bg-indigo-50 text-indigo-600' },
+    { label: 'Gross Revenue', value: rm(sum(inventory, (i) => i.sold * i.price)), note: `${sum(inventory, (i) => i.sold)} portions sold`, icon: TrendingUp, tint: 'bg-violet-50 text-violet-600' },
     { label: 'Waste Diverted', value: `${(units * KG_PER_UNIT).toFixed(1)} kg food saved`, note: `${units} portions on promo`, icon: Leaf, tint: 'bg-emerald-50 text-emerald-600' },
     { label: 'Recovered Margin', value: rm(sum(activePromos, (p) => p.units * p.promoPrice)), note: 'If promo stock sells through', icon: Wallet, tint: 'bg-sky-50 text-sky-600' },
-    { label: 'Active Grab Promos', value: activePromos.length, note: activePromos.length ? 'Live on GrabFood' : 'None live yet', icon: Zap, tint: 'bg-rose-50 text-rose-600' },
+    { label: 'Live App Promos', value: activePromos.length, note: activePromos.length ? 'Live on the customer app' : 'None live yet', icon: Zap, tint: 'bg-violet-50 text-violet-600' },
   ]
   return (
     <section aria-label="Key metrics" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -394,7 +364,7 @@ function NumberInput({ label, value, max, onChange }) {
       aria-label={label}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums shadow-xs transition focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30"
+      className="w-16 rounded-md border border-slate-200 bg-white px-2 py-1 text-sm tabular-nums shadow-xs transition focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30"
     />
   )
 }
@@ -411,7 +381,7 @@ function InventoryTable({ analyses, category, onCategory, onUpdate }) {
           aria-pressed={c === category}
           onClick={() => onCategory(c)}
           className={cx(
-            'rounded-full px-2.5 py-1 text-xs transition active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50',
+            'rounded-full px-2.5 py-1 text-xs transition active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50',
             c === category ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
           )}
         >
@@ -455,7 +425,7 @@ function InventoryTable({ analyses, category, onCategory, onUpdate }) {
                       <span className="text-slate-500">{pct}% sold</span>
                     </div>
                     <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden" role="progressbar" aria-label={`${item.name} sell-through`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-                      <div className="bg-indigo-500 h-full rounded-full transition-[width] duration-300 ease-out" style={{ width: `${pct}%` }} />
+                      <div className="bg-violet-500 h-full rounded-full transition-[width] duration-300 ease-out" style={{ width: `${pct}%` }} />
                     </div>
                   </td>
                   <td className="pl-3 pr-5 py-3"><StatusBadge type={status.type} /></td>
@@ -510,7 +480,7 @@ function MenuMatrix({ inventory }) {
             return (
               <g key={item.id} onMouseEnter={() => setHoverId(item.id)} onMouseLeave={() => setHoverId(null)} className="cursor-default">
                 <circle cx={sx(x)} cy={sy(y)} r={14} fill="transparent" />
-                <circle cx={sx(x)} cy={sy(y)} r={hoverId === item.id ? 6.5 : 5} className="fill-indigo-500 stroke-white transition-all" strokeWidth={2} />
+                <circle cx={sx(x)} cy={sy(y)} r={hoverId === item.id ? 6.5 : 5} className="fill-violet-500 stroke-white transition-all" strokeWidth={2} />
                 <text x={sx(x) + (right ? 9 : -9)} y={sy(y)} dy="0.32em" textAnchor={right ? 'start' : 'end'} className="fill-slate-700 text-[10px] font-medium">{shortName(item)}</text>
               </g>
             )
@@ -546,7 +516,7 @@ function WasteExposure({ inventory }) {
               <span className="tabular-nums text-slate-900 font-medium">{rm(risk)}</span>
             </div>
             <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div className="h-full rounded-full bg-slate-700 group-hover:bg-indigo-500 transition-[width,background-color] duration-300 ease-out" style={{ width: `${(risk / max) * 100}%` }} />
+              <div className="h-full rounded-full bg-slate-700 group-hover:bg-violet-500 transition-[width,background-color] duration-300 ease-out" style={{ width: `${(risk / max) * 100}%` }} />
             </div>
             <p className="mt-1 text-[11px] text-slate-500 tabular-nums">{left} portions × {rm(item.cost)} cost</p>
           </li>
@@ -560,7 +530,7 @@ function ActionCenter({ insights, promoById, discounts, onDiscount, onPrep, onPu
   return (
     <Card
       id="insights"
-      title={<span className="flex items-center gap-2">AI Insights Engine <Sparkles size={18} className="text-indigo-500 animate-pulse" aria-hidden /></span>}
+      title={<span className="flex items-center gap-2">AI Insights Engine <Sparkles size={18} className="text-violet-500 animate-pulse" aria-hidden /></span>}
       subtitle={`${insights.length} ${insights.length === 1 ? 'action' : 'actions'} recommended`}
     >
       <div className="px-4 pb-4 flex flex-col gap-3" aria-live="polite">
@@ -613,55 +583,63 @@ function OverstockCard({ item, status, promo, discount, onDiscount, onPush }) {
   const pct = promo ? promo.discount : discount
   const Icon = isCritical ? Flame : TrendingDown
   const selectId = `discount-${item.id}`
+  const tone = isCritical
+    ? { card: 'border-violet-200 bg-violet-50', icon: 'bg-violet-100 text-violet-700', text: 'text-violet-900', ink: 'text-violet-950', field: 'border-violet-200 focus:ring-violet-500/30' }
+    : { card: 'border-rose-200 bg-rose-50', icon: 'bg-rose-100 text-rose-700', text: 'text-rose-900', ink: 'text-rose-950', field: 'border-rose-200 focus:ring-rose-500/30' }
+  const pushBtn = 'w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2'
 
   return (
-    <article className="card-in rounded-xl border border-rose-200 bg-rose-50 p-4">
+    <article className={cx('card-in rounded-xl border p-4', tone.card)}>
       <div className="flex items-start gap-3">
-        <span className="grid place-items-center size-8 shrink-0 rounded-lg bg-rose-100 text-rose-700"><Icon size={16} /></span>
+        <span className={cx('grid place-items-center size-8 shrink-0 rounded-lg', tone.icon)}><Icon size={16} /></span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-medium leading-snug">{item.name}</h3>
             {isCritical && <StatusBadge type="overstock_critical" />}
           </div>
-          <p className="text-sm text-rose-900">
-            {promo ? `Promo live since ${promo.pushedAt}.` : `${status.message} Suggestion: ${status.suggestedAction}.`}
+          <p className={cx('text-sm', tone.text)}>
+            {promo ? `${promo.isBag ? 'Mystery Bag' : 'Flash sale'} live since ${promo.pushedAt}.` : `${status.message} Suggestion: ${status.suggestedAction}.`}
           </p>
         </div>
       </div>
 
-      <dl className="mt-3 grid grid-cols-3 gap-2 text-sm text-rose-950">
+      <dl className={cx('mt-3 grid grid-cols-3 gap-2 text-sm', tone.ink)}>
         <Metric label="Loss risk" value={rm(left * item.cost)} />
         <Metric label="Surplus" value={left} />
-        <Metric label="Grab price" value={rm(Math.round(item.price * (100 - pct)) / 100)} />
+        <Metric label="App price" value={rm(Math.round(item.price * (100 - pct)) / 100)} />
       </dl>
 
-      <div className="mt-3 flex items-center gap-2">
-        <label htmlFor={selectId} className="text-xs font-medium text-rose-900">Discount</label>
-        <select
-          id={selectId}
-          value={pct}
-          disabled={Boolean(promo)}
-          onChange={(e) => onDiscount(item.id, Number(e.target.value))}
-          className="flex-1 rounded-md border border-rose-200 bg-white px-2 py-1.5 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-rose-500/30 disabled:opacity-60"
-        >
-          {DISCOUNTS.map((d) => (
-            <option key={d} value={d}>{d}% off{d === status.discount ? ' (suggested)' : ''}</option>
-          ))}
-        </select>
-      </div>
+      {!promo && (
+        <div className="mt-3 flex items-center gap-2">
+          <label htmlFor={selectId} className={cx('text-xs font-medium', tone.text)}>Discount</label>
+          <select
+            id={selectId}
+            value={pct}
+            onChange={(e) => onDiscount(item.id, Number(e.target.value))}
+            className={cx('flex-1 rounded-md border bg-white px-2 py-1.5 text-sm tabular-nums focus:outline-none focus:ring-2', tone.field)}
+          >
+            {DISCOUNTS.map((d) => (
+              <option key={d} value={d}>{d}% off{d === status.discount ? ' (suggested)' : ''}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {promo ? (
-        <button type="button" disabled className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg bg-emerald-600 text-white px-3 py-2 text-sm font-semibold cursor-not-allowed">
-          <CircleCheck size={16} /> Live on App
+        <button type="button" disabled className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 px-3 py-2 text-sm font-semibold cursor-not-allowed">
+          <CircleCheck size={16} /> Live on App · {promo.units} left
         </button>
       ) : (
-        <button
-          type="button"
-          onClick={() => onPush(item, pct)}
-          className="mt-3 w-full bg-rose-600 text-white flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm hover:bg-rose-700 active:scale-[0.98] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50 focus-visible:ring-offset-2"
-        >
-          <Send size={15} /> Push to GrabFood
-        </button>
+        <div className="mt-3 flex flex-col gap-2">
+          <button type="button" onClick={() => onPush(item, pct)} className={cx(pushBtn, 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500/50')}>
+            <Send size={15} /> Push to Customer App
+          </button>
+          {isCritical && (
+            <button type="button" onClick={() => onPush(item, pct, true)} className={cx(pushBtn, 'border border-violet-300 bg-white text-violet-700 hover:bg-violet-100 focus-visible:ring-violet-500/50')}>
+              <Gift size={15} /> Push as Mystery Bag ({BAG_DISCOUNT}% off)
+            </button>
+          )}
+        </div>
       )}
     </article>
   )
@@ -669,7 +647,7 @@ function OverstockCard({ item, status, promo, discount, onDiscount, onPush }) {
 
 function SyncPanel({ activePromos, onEnd }) {
   return (
-    <Card id="sync" title="GrabFood Sync" subtitle="Promos currently live on the app">
+    <Card id="sync" title="Live on Customer App" subtitle="Deals customers can order right now">
       {activePromos.length === 0 ? (
         <p className="px-5 pb-5 text-sm text-slate-500">Nothing live yet. Push a surplus item from the AI Insights Engine.</p>
       ) : (
@@ -684,7 +662,7 @@ function SyncPanel({ activePromos, onEnd }) {
               <button
                 type="button"
                 onClick={() => onEnd(promo)}
-                className="rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50"
+                className="rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50"
               >
                 End
               </button>
@@ -696,7 +674,7 @@ function SyncPanel({ activePromos, onEnd }) {
   )
 }
 
-function Toast({ toast, onClose }) {
+export function Toast({ toast, onClose }) {
   return (
     <div role="status" aria-live="polite" className="fixed bottom-6 right-6 z-50">
       {toast && (
