@@ -39,7 +39,7 @@ export default function Auth({ onLogin }) {
       <div className="relative mx-auto max-w-5xl px-5 py-10 sm:py-16">
         <div className="flex items-center gap-2.5">
           <span className="grid place-items-center size-9 rounded-xl bg-emerald-500 text-zinc-950"><ChefHat size={19} /></span>
-          <span className="text-lg font-semibold tracking-tight">BiteBack</span>
+          <span className="text-lg font-semibold tracking-tight">CraveSave</span>
         </div>
 
         <header className="mt-12 sm:mt-16 max-w-3xl">
@@ -56,7 +56,7 @@ export default function Auth({ onLogin }) {
 
         <form onSubmit={submit} className="mt-10 sm:mt-14 grid gap-6 lg:grid-cols-[1fr_340px]">
           <fieldset>
-            <legend className="mb-3 text-sm font-medium text-zinc-400">Choose how you'll use BiteBack</legend>
+            <legend className="mb-3 text-sm font-medium text-zinc-400">Choose how you'll use CraveSave</legend>
             <div role="radiogroup" className="grid gap-4 sm:grid-cols-2">
               {ROLES.map((r) => {
                 const isOn = role === r.id
@@ -99,7 +99,7 @@ export default function Auth({ onLogin }) {
               <input
                 type="email"
                 required
-                defaultValue={role === 'restaurant' ? 'midvalley@biteback.my' : 'aina@example.com'}
+                defaultValue={role === 'restaurant' ? 'midvalley@cravesave.my' : 'aina@example.com'}
                 key={role ?? 'none'}
                 className="mt-1 w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-400/60 focus:ring-2 focus:ring-emerald-400/20"
               />

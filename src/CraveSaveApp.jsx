@@ -12,7 +12,7 @@ const VIEWS = [
   { id: 'customer', label: 'Customer', icon: Smartphone },
 ]
 
-export default function BiteBackApp() {
+export default function CraveSaveApp() {
   const store = useDemoStore()
   const { currentView, setCurrentView, toast, setToast, pitchStep, setPitchStep, goToPitchStep } = store
 

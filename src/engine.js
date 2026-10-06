@@ -1,4 +1,4 @@
-// Pure logic for BiteBack AI: stock rules, surplus routing, forecasting, impact.
+// Pure logic for CraveSave AI: stock rules, surplus routing, forecasting, impact.
 // Every number marked ASSUMPTION is a placeholder: source it before quoting it in a pitch.
 
 export const KG_PER_UNIT = 0.4 // ASSUMPTION: average portion weight
@@ -6,7 +6,7 @@ export const PROMO_SELL_RATE = 0.6 // ASSUMPTION: share of flash-sale stock that
 export const STAFF_MEAL_CAP = 10 // portions per close, shared across items
 export const CO2E_PER_KG = 2.5 // ASSUMPTION: kg CO2e avoided per kg food kept out of landfill
 export const OPERATING_DAYS = 30
-export const SUBSCRIPTION_RM = 149 // ASSUMPTION: BiteBack monthly price per outlet
+export const SUBSCRIPTION_RM = 149 // ASSUMPTION: CraveSave monthly price per outlet
 export const NON_DONATABLE = new Set(['Drinks']) // dairy drinks fail food-bank safety rules
 
 export const FORECAST = { buffer: 0.1, batch: 5, soldOutAt: 0.95, soldOutUplift: 0.15 }

@@ -18,7 +18,7 @@ const TOAST_MS = 3000
 export const PITCH_STEPS = [
   { title: 'Lunch rush', caption: 'Nasi Lemak and Laksa are selling 2× faster than usual. The engine flags a stockout before dinner.', time: '12:00 PM', flashSale: false, partners: NO_PARTNERS, target: 'insights' },
   { title: 'Surplus builds', caption: 'By 5:30 PM, Chicken Chop and Kaya Toast are over-prepped. The engine suggests a 15% discount.', time: '5:30 PM', flashSale: false, partners: NO_PARTNERS, target: 'insights' },
-  { title: 'Flash sale', caption: 'At 9 PM, three dishes go live on the BiteBack customer app at 40% off, one tap each.', time: '9:00 PM', flashSale: true, partners: NO_PARTNERS, target: 'sync' },
+  { title: 'Flash sale', caption: 'At 9 PM, three dishes go live on the CraveSave customer app at 40% off, one tap each.', time: '9:00 PM', flashSale: true, partners: NO_PARTNERS, target: 'sync' },
   { title: 'Customers see it', caption: 'Seconds later, nearby customers see the flash sale. One tap rescues a meal by delivery or pickup.', time: '9:00 PM', flashSale: true, partners: NO_PARTNERS, target: 'feed', view: 'customer' },
   { title: 'Today: the bin', caption: 'Whatever still does not sell goes to landfill. This is how most outlets close today.', time: '9:00 PM', flashSale: true, partners: NO_PARTNERS, target: 'recovery' },
   { title: 'Waste to value', caption: 'Switch on partners and the same surplus becomes staff meals, food-bank meals and insect feed.', time: '9:00 PM', flashSale: true, partners: ALL_PARTNERS, target: 'recovery' },

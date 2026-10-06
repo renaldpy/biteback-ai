@@ -68,7 +68,7 @@ export default function RestaurantDashboard({ store }) {
     if (promoById.has(item.id)) return
     const promo = makePromo(item, isBag ? BAG_DISCOUNT : discount, timeOfDay, { isBag })
     setActivePromos((promos) => [...promos, promo])
-    notify('Live on the BiteBack customer app', `${promo.name} · ${promo.discount}% off`)
+    notify('Live on the CraveSave customer app', `${promo.name} · ${promo.discount}% off`)
   }
 
   const endPromo = (promo) => {
@@ -208,7 +208,7 @@ function SidebarBody({ active, onNavigate, onReset, onSwitch }) {
         <span className="grid place-items-center size-8 rounded-lg bg-violet-600 text-white">
           <ChefHat size={18} />
         </span>
-        <span className="font-semibold tracking-tight text-white">BiteBack <span className="text-violet-400">AI</span></span>
+        <span className="font-semibold tracking-tight text-white">CraveSave <span className="text-violet-400">AI</span></span>
       </div>
 
       <nav aria-label="Primary" className="flex flex-col gap-1 p-3">
@@ -280,7 +280,7 @@ function Header({ timeOfDay, onTimeChange, onMenu, onPitch }) {
           </button>
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-              <span className="lg:hidden text-violet-600">BiteBack AI · </span>{SERVICE_PHASE[timeOfDay]}
+              <span className="lg:hidden text-violet-600">CraveSave AI · </span>{SERVICE_PHASE[timeOfDay]}
             </p>
             <h1 className="text-xl font-semibold tracking-tight">
               <label htmlFor="branch" className="sr-only">Branch</label>
