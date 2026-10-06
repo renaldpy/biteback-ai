@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes drawer-in {
+  from { transform: translateX(-100%); }
+  to { transform: none; }
+}
+
+.drawer-in[open] { animation: drawer-in 280ms cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.toast-in { animation: rise-in 320ms cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.card-in { animation: rise-in 240ms cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .toast-in, .card-in, .drawer-in[open] { animation: fade-in 150ms ease both; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass { background-color: rgb(248 250 252); backdrop-filter: none; }
+  .glass-dark { background-color: rgb(15 23 42); backdrop-filter: none; }
+}
